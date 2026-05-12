@@ -1,0 +1,1211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>服装SKU管理系统 · 形状增强版</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        /* 样式与原代码完全一致，此处略去以节省篇幅 */
+        :root {
+            --bg: #f0f2f5;
+            --card-bg: #ffffff;
+            --primary: #4f6ef7;
+            --primary-hover: #3b54d4;
+            --primary-light: #eef1ff;
+            --text: #1a1a2e;
+            --text-secondary: #6b7280;
+            --border: #e5e7eb;
+            --danger: #ef4444;
+            --sidebar-width: 250px;
+            --sidebar-collapsed: 64px;
+            --shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+            --radius: 12px;
+            --radius-sm: 8px;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif; background: var(--bg); color: var(--text); display: flex; min-height: 100vh; }
+        .sidebar { width: var(--sidebar-width); min-width: var(--sidebar-width); height: 100vh; position: sticky; top: 0; background: #fff; border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 100; transition: width 0.2s; }
+        .sidebar.collapsed { width: var(--sidebar-collapsed); min-width: var(--sidebar-collapsed); }
+        .sidebar-logo { padding: 16px; display: flex; align-items: center; gap: 10px; font-weight: 800; color: var(--primary); border-bottom: 1px solid var(--border); cursor: pointer; }
+        .logo-icon-svg {
+    width: 38px;
+    height: 38px;
+    background: linear-gradient(135deg, #4f6ef7, #7c3aed);
+    border-radius: 10px;
+    padding: 5px;
+}
+/* 保留原有 .logo-icon 在其他地方的引用，或全局替换为 .logo-icon-svg */
+        .sidebar.collapsed .logo-text { display: none; }
+        .sidebar-nav { flex: 1; padding: 12px 8px; display: flex; flex-direction: column; gap: 4px; }
+        .nav-item { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 10px; cursor: pointer; font-weight: 600; color: var(--text-secondary); transition: all 0.2s; }
+        .nav-item.active { background: var(--primary-light); color: var(--primary); }
+        .nav-item .nav-icon { font-size: 1.15rem; }
+        .sidebar.collapsed .nav-label { display: none; }
+        .nav-sub { padding-left: 20px; max-height: 0; overflow: hidden; transition: max-height 0.3s; }
+        .nav-sub.expanded { max-height: 300px; }
+        .nav-sub-item { padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 0.82rem; }
+        .nav-sub-item.active { color: var(--primary); font-weight: 700; background: var(--primary-light); }
+        .sidebar-toggle { padding: 12px; text-align: center; border-top: 1px solid var(--border); cursor: pointer; }
+        .main-content { flex: 1; display: flex; flex-direction: column; height: 100vh; overflow-y: auto; }
+        .content-header { padding: 16px 28px; background: #fff; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
+        .breadcrumb { font-size: 0.9rem; color: var(--text-secondary); }
+        .breadcrumb .current { color: var(--text); font-weight: 700; }
+        .quick-stats span { background: var(--bg); padding: 5px 13px; border-radius: 18px; font-weight: 600; font-size: 0.85rem; }
+        .content-body { flex: 1; padding: 20px 24px; max-width: 1400px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+        .card { background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border); }
+        .card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); font-weight: 700; display: flex; align-items: center; justify-content: space-between; background: #fafbfc; flex-wrap: wrap; gap: 10px; }
+        .card-body { padding: 16px 20px; }
+        .btn { padding: 11px 22px; border: none; border-radius: 25px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s; }
+        .btn-primary { background: var(--primary); color: #fff; }
+        .btn-primary:hover { background: var(--primary-hover); }
+        .btn-outline { background: #fff; color: var(--primary); border: 2px solid var(--primary); }
+        .btn-sm { padding: 7px 15px; font-size: 0.8rem; border-radius: 18px; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+        .drop-zone { border: 2px dashed #d1d5db; border-radius: var(--radius); padding: 36px 24px; text-align: center; cursor: pointer; background: #fafbfc; position: relative; min-height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .drop-zone:hover, .drop-zone.drag-over { border-color: var(--primary); background: #eef1ff; }
+        .drop-zone .preview-overlay { position: absolute; top: 10px; right: 14px; background: var(--danger); color: #fff; border: none; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 5; }
+        .drop-zone img.preview { max-width: 260px; max-height: 200px; border-radius: var(--radius-sm); object-fit: contain; box-shadow: var(--shadow); border: 3px solid var(--primary); }
+        .search-result { display: flex; align-items: center; gap: 16px; padding: 16px; border-radius: 8px; border: 2px solid #e5e7eb; margin-bottom: 8px; }
+        .match-high { border-color: #10b981; background: #f0fdf6; }
+        .match-medium { border-color: #f59e0b; background: #fffdf0; }
+        .match-low { border-color: #d1d5db; background: #fafbfc; }
+        .score-badge { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff; flex-shrink: 0; }
+        .score-high { background: #10b981; }
+        .score-medium { background: #f59e0b; }
+        .score-low { background: #9ca3af; }
+        .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #1a1a2e; color: #fff; padding: 12px 24px; border-radius: 25px; font-weight: 600; z-index: 400; }
+        .toast.success { background: #10b981; }
+        .toast.error { background: #ef4444; }
+        .category-filter { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+        .category-filter .filter-btn { padding: 6px 16px; border-radius: 20px; border: 2px solid var(--border); background: #fff; cursor: pointer; font-size: 0.8rem; font-weight: 600; }
+        .category-filter .filter-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .sku-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+        .sku-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: var(--radius-sm); border: 2px solid #e5e7eb; background: #fafbfc; position: relative; transition: all 0.2s; }
+        .sku-card:hover { border-color: #d0d7fd; background: #f0f3ff; }
+        .sku-card .sku-thumb { width: 64px; height: 64px; border-radius: 8px; object-fit: cover; background: #e5e7eb; flex-shrink: 0; }
+        .sku-card .sku-info { flex: 1; min-width: 0; }
+        .sku-card .sku-code { font-weight: 700; color: var(--primary); }
+        .sku-card .article-number { font-weight: 700; color: #e67e22; font-size: 0.78rem; }
+        .sku-card .sku-meta { font-size: 0.72rem; color: var(--text-secondary); display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+        .sku-tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.68rem; font-weight: 500; background: #f0f0f0; }
+        .sku-tag.category { background: #e8f0fe; color: #4f6ef7; }
+        .sku-tag.responsible { background: #fef3e0; color: #e67e22; }
+        .sku-tag.article { background: #fff3cd; color: #b8860b; font-weight: 700; }
+        .batch-checkbox { position: absolute; top: 8px; left: 8px; z-index: 5; width: 18px; height: 18px; cursor: pointer; transform: scale(1.2); }
+        .batch-actions { display: flex; gap: 8px; margin-top: 12px; align-items: center; justify-content: flex-end; }
+        .sku-edit, .sku-delete { background: none; border: none; cursor: pointer; font-size: 0.9rem; padding: 2px 4px; opacity: 0.7; transition: opacity 0.2s; }
+        .sku-edit:hover, .sku-delete:hover { opacity: 1; }
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 200; display: flex; align-items: center; justify-content: center; }
+        .modal { background: #fff; border-radius: var(--radius); box-shadow: 0 8px 32px rgba(0,0,0,0.15); width: 90%; max-width: 580px; max-height: 85vh; overflow-y: auto; }
+        .modal-header { padding: 16px 20px; border-bottom: 1px solid var(--border); font-weight: 700; display: flex; justify-content: space-between; background: #fafbfc; position: sticky; top:0; z-index: 1; }
+        .modal-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; }
+        .form-group label { font-weight: 600; font-size: 0.85rem; }
+        .form-group input, .form-group textarea { padding: 10px 14px; border: 2px solid var(--border); border-radius: var(--radius-sm); font-size: 0.9rem; background: #fafbfc; }
+        .form-group input:focus, .form-group textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79,110,247,0.1); background: #fff; }
+        .img-preview-small { width: 120px; height: 120px; object-fit: cover; border-radius: 8px; border: 2px dashed var(--border); cursor: pointer; background: #fafbfc; }
+        .modal-footer { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; position: sticky; bottom:0; background: #fff; }
+        .import-preview-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; display: block; max-height: 180px; overflow-y: auto; }
+        .import-preview-table th, .import-preview-table td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; white-space: nowrap; }
+        .import-preview-table th { background: #f3f4f6; position: sticky; top: 0; }
+        .progress-bar { height: 6px; background: #e5e7eb; border-radius: 3px; margin: 10px 0; overflow: hidden; }
+        .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: width 0.3s; }
+        .empty-state { text-align: center; padding: 40px; color: var(--text-secondary); }
+        .empty-state .empty-icon { font-size: 3.5rem; display: block; margin-bottom: 10px; opacity: 0.4; }
+        /* 1688风格搜图 */
+        .search-hero { background: linear-gradient(135deg, #f0f4ff 0%, #e8eeff 40%, #f5f3ff 100%); border-radius: var(--radius); padding: 28px 24px; text-align: center; border: 1px solid #d8e0fb; }
+        .search-hero .hero-title { font-size: 1.3rem; font-weight: 800; color: #2d3a8c; margin-bottom: 6px; }
+        .search-hero .hero-subtitle { font-size: 0.82rem; color: #6b7280; margin-bottom: 18px; }
+        .search-tabs { display: inline-flex; background: #fff; border-radius: 25px; border: 2px solid #e5e7eb; overflow: hidden; margin-bottom: 16px; }
+        .search-tabs .search-tab { padding: 10px 22px; cursor: pointer; font-weight: 600; font-size: 0.85rem; border: none; background: #fff; color: #6b7280; transition: all 0.2s; white-space: nowrap; }
+        .search-tabs .search-tab.active { background: var(--primary); color: #fff; }
+        .search-tabs .search-tab:not(:last-child) { border-right: 2px solid #e5e7eb; }
+        .url-input-group { display: flex; gap: 8px; max-width: 680px; margin: 0 auto 10px; background: #fff; border-radius: 28px; border: 2px solid #e5e7eb; padding: 6px 6px 6px 18px; transition: border-color 0.2s; align-items: center; }
+        .url-input-group:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79,110,247,0.1); }
+        .url-input-group input { flex: 1; border: none; outline: none; font-size: 0.9rem; background: transparent; min-width:0; }
+        .url-input-group .btn-search-go { border-radius: 24px; padding: 10px 22px; font-weight: 700; flex-shrink: 0; }
+        .search-history-tags { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; max-width: 680px; margin: 0 auto; }
+        .history-tag { display: inline-flex; align-items: center; gap: 4px; padding: 5px 12px; border-radius: 16px; background: #fff; border: 1px solid #e5e7eb; font-size: 0.73rem; cursor: pointer; color: #6b7280; transition: all 0.2s; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .history-tag:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+        .history-tag .hist-delete { cursor: pointer; font-size: 0.7rem; opacity: 0.5; flex-shrink: 0; }
+        .history-tag .hist-delete:hover { opacity: 1; color: var(--danger); }
+        .drop-zone-inline { border: 2px dashed #d1d5db; border-radius: var(--radius); padding: 20px; text-align: center; cursor: pointer; background: #fafbfc; transition: all 0.2s; max-width: 680px; margin: 0 auto; position: relative; min-height: 100px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+        .drop-zone-inline:hover, .drop-zone-inline.drag-over { border-color: var(--primary); background: #eef1ff; }
+        .drop-zone-inline .preview-img-inline { max-width: 280px; max-height: 220px; border-radius: 8px; object-fit: contain; border: 3px solid var(--primary); box-shadow: var(--shadow); }
+        .drop-zone-inline .clear-preview-btn { position: absolute; top: 8px; right: 12px; background: var(--danger); color: #fff; border: none; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 0.8rem; z-index: 5; }
+        .slider-group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .slider-group input[type=range] { flex: 1; min-width: 120px; max-width: 200px; accent-color: var(--primary); }
+        .slider-group .slider-value { font-weight: 700; color: var(--primary); min-width: 40px; text-align: center; }
+        .result-stats-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; padding: 10px 14px; background: #f9fafb; border-radius: 8px; }
+        .result-stats-bar .stats-text { font-weight: 700; font-size: 0.9rem; }
+        .result-stats-bar .stats-text .highlight { color: var(--primary); font-size: 1.1rem; }
+        .quick-match-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 0.7rem; font-weight: 700; }
+        .quick-match-badge.exact { background: #d1fae5; color: #065f46; }
+        .quick-match-badge.similar { background: #fef3c7; color: #92400e; }
+        @media(max-width:768px) {
+            .sku-grid { grid-template-columns: 1fr; }
+            .content-body { padding: 12px; gap: 12px; }
+            .drop-zone { padding: 20px 14px; min-height: 130px; }
+            .search-hero { padding: 18px 14px; }
+            .url-input-group { padding: 4px 4px 4px 14px; border-radius: 22px; }
+            .url-input-group .btn-search-go { padding: 8px 16px; font-size: 0.8rem; }
+            .search-tabs .search-tab { padding: 8px 14px; font-size: 0.78rem; }
+        }
+    </style>
+</head>
+<body>
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-logo" id="sidebarLogo">
+    <svg class="logo-icon-svg" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+        <!-- J字母：垂直主笔画 + 底部弧线 -->
+        <path d="M12 8 L12 28 Q12 34 20 34 Q28 34 28 28 L28 24" 
+              fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- X字母：交叉对角线 -->
+        <line x1="20" y1="14" x2="34" y2="30" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/>
+        <line x1="34" y1="14" x2="20" y2="30" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/>
+    </svg>
+    <span class="logo-text" style="font-weight: 800; letter-spacing: 2px;">景夕网络科技</span>
+</div>
+        <nav class="sidebar-nav" id="sidebarNav">
+            <div class="nav-item active" data-nav="product-library" data-parent="product"><span class="nav-icon">📋</span><span class="nav-label">商品库</span></div>
+            <div class="nav-sub expanded" id="sub-product">
+                <div class="nav-sub-item active" data-nav="sku-list" data-parent="product">📄 SKU列表</div>
+                <div class="nav-sub-item" data-nav="add-sku" data-parent="product">➕ 添加商品</div>
+            </div>
+            <div class="nav-item" data-nav="image-search" data-parent="search"><span class="nav-icon">🔍</span><span class="nav-label">以图搜图</span></div>
+            <div class="nav-sub" id="sub-search">
+                <div class="nav-sub-item" data-nav="upload-search" data-parent="search">📷 上传搜图</div>
+                <div class="nav-sub-item" data-nav="url-search" data-parent="search">🌐 URL搜图</div>
+            </div>
+            <div class="nav-item" data-nav="data-import" data-parent="import"><span class="nav-icon">📥</span><span class="nav-label">批量导入</span></div>
+            <div class="nav-sub" id="sub-import">
+                <div class="nav-sub-item" data-nav="csv-import" data-parent="import">📋 表格导入</div>
+                <div class="nav-sub-item" data-nav="batch-update-url" data-parent="import">🔄 批量更新URL</div>
+                <div class="nav-sub-item" data-nav="batch-update-article-sku" data-parent="import">🔄 批量更新货号/SKU</div>
+                <div class="nav-sub-item" data-nav="template-download" data-parent="import">📥 模板下载</div>
+            </div>
+        </nav>
+        <div class="sidebar-toggle" id="sidebarToggle">◀ 收起菜单</div>
+    </aside>
+
+    <main class="main-content" id="mainContent">
+        <div class="content-header">
+            <div class="breadcrumb"><span>🏠</span><span>/</span><span class="current" id="breadcrumbCurrent">商品库</span></div>
+            <div class="quick-stats"><span>SKU：<strong id="skuCount">0</strong></span><span>存储：<strong id="storageUsage">云端</strong></span></div>
+        </div>
+        <div class="content-body" id="contentBody"></div>
+    </main>
+
+    <!-- 编辑模态框 -->
+    <div class="modal-overlay" id="editModalOverlay" style="display:none;">
+        <div class="modal">
+            <div class="modal-header"><span>✏️ 编辑SKU</span><button class="modal-close" id="editModalClose">✕</button></div>
+            <div class="modal-body">
+                <input type="hidden" id="editSkuId">
+                <div class="form-group"><label>货号</label><input id="editSkuArticleNumber" placeholder="商品货号（可选）"></div>
+                <div class="form-group"><label>SKU编号</label><input id="editSkuCode" disabled style="background:#f5f5f5;"></div>
+                <div class="form-group"><label>商品名称</label><input id="editSkuName"></div>
+                <div class="form-group"><label>服装类目</label><input id="editSkuCategory" list="editCatList"><datalist id="editCatList"><option value="上装"><option value="下装"><option value="连衣裙"><option value="外套"><option value="配饰"></datalist></div>
+                <div class="form-group"><label>颜色</label><input id="editSkuColor"></div>
+                <div class="form-group"><label>尺码</label><input id="editSkuSize"></div>
+                <div class="form-group"><label>价格</label><input id="editSkuPrice"></div>
+                <div class="form-group"><label>负责人</label><input id="editSkuResponsible"></div>
+                <div class="form-group"><label>商品图片（留空则不修改）</label>
+                    <img id="editSkuImgPreview" class="img-preview-small" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Crect fill='%23f3f4f6' width='120' height='120'/%3E%3Ctext x='50%25' y='50%25' dy='.3em' fill='%239ca3af'%3E点击上传%3C/text%3E%3C/svg%3E">
+                    <input type="file" id="editSkuImgInput" accept="image/*" style="display:none;">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline btn-sm" id="editModalCancel">取消</button>
+                <button class="btn btn-primary" id="editModalSave">💾 保存修改</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toastContainer"></div>
+
+    <script>
+        (() => {
+            // ⚠️ 请将下面的 URL 和 Key 替换为你自己的 Supabase 项目信息
+            const SUPABASE_URL = 'https://dudcppazwqgkaeannrks.supabase.co';        // 例如 https://xxxxx.supabase.co
+            const SUPABASE_KEY = 'sb_publishable_ATBiAKdFYwBwjshO68Agdw_GGXudq3f';           // sb_publishable_xxxx
+            const BUCKET_NAME = 'sku-images';
+            const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+            let searchWorker = null;
+            let allSkus = [];
+            let currentNav = 'sku-list';
+            let searchImageData = null;
+            let skuImgFile = null;
+            let editImgFile = null;
+            let batchMode = false;
+            let currentCategoryFilter = '';
+            let currentSearchKeyword = '';
+            let searchMode = 'fuzzy';
+
+            const SEARCH_HISTORY_KEY = 'sku_image_search_history';
+            const MAX_HISTORY = 20;
+            function getSearchHistory() { try { const raw = localStorage.getItem(SEARCH_HISTORY_KEY); return raw ? JSON.parse(raw) : []; } catch (e) { return []; } }
+            function addSearchHistory(url) { if (!url || !url.trim()) return; const trimmed = url.trim(); let history = getSearchHistory(); history = history.filter(h => h.url !== trimmed); history.unshift({ url: trimmed, time: Date.now() }); if (history.length > MAX_HISTORY) history = history.slice(0, MAX_HISTORY); try { localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(history)); } catch (e) {} }
+            function removeSearchHistory(url) { let history = getSearchHistory(); history = history.filter(h => h.url !== url); try { localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(history)); } catch (e) {} }
+            function clearSearchHistory() { try { localStorage.removeItem(SEARCH_HISTORY_KEY); } catch (e) {} }
+
+            const loadFileToImg = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = e => { const img = new Image(); img.onload = () => res({ img, dataUrl: e.target.result }); img.onerror = rej; img.src = e.target.result; }; r.onerror = rej; r.readAsDataURL(f); });
+            const loadURLtoImg = u => new Promise((res, rej) => { const img = new Image(); img.crossOrigin = 'anonymous'; const t = setTimeout(() => { img.src = ''; rej(new Error('加载超时')); }, 8000); img.onload = () => { clearTimeout(t); res(img); }; img.onerror = () => { clearTimeout(t); rej(new Error('无法加载图片')); }; img.src = u; });
+
+            const computeHashFromImg = img => {
+                const c = document.createElement('canvas'); c.width = 16; c.height = 16;
+                const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0, 16, 16);
+                const d = ctx.getImageData(0, 0, 16, 16).data;
+                const g = []; for (let i = 0; i < d.length; i += 4) g.push(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]);
+                const avg = g.reduce((a, b) => a + b) / g.length;
+                return g.map(v => v >= avg ? '1' : '0').join('');
+            };
+
+            const computeHistFromImg = img => {
+                const c = document.createElement('canvas'); c.width = 16; c.height = 16;
+                const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0, 16, 16);
+                const d = ctx.getImageData(0, 0, 16, 16).data;
+                const bins = new Array(12).fill(0);
+                for (let i = 0; i < d.length; i += 4) {
+                    bins[Math.min(Math.floor(d[i] / 64), 3)]++;
+                    bins[4 + Math.min(Math.floor(d[i + 1] / 64), 3)]++;
+                    bins[8 + Math.min(Math.floor(d[i + 2] / 64), 3)]++;
+                }
+                return bins.map(v => v / 256);
+            };
+
+            const computeHuMoments = (img) => {
+                const c = document.createElement('canvas'); const size = 64; c.width = size; c.height = size;
+                const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0, size, size);
+                const imageData = ctx.getImageData(0, 0, size, size); const data = imageData.data;
+                const gray = new Float32Array(size * size);
+                for (let i = 0; i < data.length; i += 4) gray[i/4] = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+                function rawMoment(p, q) { let m = 0; for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) m += Math.pow(x, p) * Math.pow(y, q) * gray[y*size + x]; return m; }
+                const m00 = rawMoment(0,0); if (m00 === 0) return [0,0,0,0,0,0,0];
+                const cx = rawMoment(1,0) / m00, cy = rawMoment(0,1) / m00;
+                function centralMoment(p, q) { let mu = 0; for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) mu += Math.pow(x - cx, p) * Math.pow(y - cy, q) * gray[y*size + x]; return mu; }
+                const mu11 = centralMoment(1,1), mu20 = centralMoment(2,0), mu02 = centralMoment(0,2);
+                const mu21 = centralMoment(2,1), mu12 = centralMoment(1,2), mu30 = centralMoment(3,0), mu03 = centralMoment(0,3);
+                const nu = (p,q) => centralMoment(p,q) / Math.pow(m00, 1 + (p+q)/2);
+                const nu11 = nu(1,1), nu20 = nu(2,0), nu02 = nu(0,2), nu21 = nu(2,1), nu12 = nu(1,2), nu30 = nu(3,0), nu03 = nu(0,3);
+                const h1 = nu20 + nu02;
+                const h2 = Math.pow(nu20 - nu02, 2) + 4 * nu11 * nu11;
+                const h3 = Math.pow(nu30 - 3*nu12, 2) + Math.pow(3*nu21 - nu03, 2);
+                const h4 = Math.pow(nu30 + nu12, 2) + Math.pow(nu21 + nu03, 2);
+                const h5 = (nu30 - 3*nu12) * (nu30 + nu12) * (Math.pow(nu30 + nu12, 2) - 3*Math.pow(nu21 + nu03, 2)) + (3*nu21 - nu03) * (nu21 + nu03) * (3*Math.pow(nu30 + nu12, 2) - Math.pow(nu21 + nu03, 2));
+                const h6 = (nu20 - nu02) * (Math.pow(nu30 + nu12, 2) - Math.pow(nu21 + nu03, 2)) + 4*nu11 * (nu30 + nu12) * (nu21 + nu03);
+                const h7 = (3*nu21 - nu03) * (nu30 + nu12) * (Math.pow(nu30 + nu12, 2) - 3*Math.pow(nu21 + nu03, 2)) - (nu30 - 3*nu12) * (nu21 + nu03) * (3*Math.pow(nu30 + nu12, 2) - Math.pow(nu21 + nu03, 2));
+                return [h1, h2, h3, h4, h5, h6, h7].map(v => Math.sign(v) * Math.log10(1 + Math.abs(v)));
+            };
+
+            const compressImg = (img, mw = 400) => { const c = document.createElement('canvas'); let w = img.width, h = img.height; if (w > mw) { h *= mw / w; w = mw; } c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h); return c.toDataURL('image/jpeg', 0.85); };
+
+            function initWorker() {
+                const code = `
+                    let features = [];
+                    self.onmessage = function(e) {
+                        if (e.data.type === 'setFeatures') {
+                            features = e.data.payload.filter(f => f.pHash && f.colorHistogram && f.huMoments && f.colorHistogram.length === 12 && f.huMoments.length === 7);
+                        } else if (e.data.type === 'search') {
+                            const { queryHash, queryHistogram, queryHu } = e.data.payload;
+                            if (!features.length || !queryHu || queryHu.length !== 7 || !queryHistogram || queryHistogram.length !== 12) { self.postMessage({ type: 'results', payload: [] }); return; }
+                            const results = features.map(sku => {
+                                if (!sku.pHash || !sku.colorHistogram || sku.colorHistogram.length !== 12 || !sku.huMoments || sku.huMoments.length !== 7) { return { id: sku.id, total: 0, structSim: 0, colorSim: 0, shapeSim: 0 }; }
+                                const h = hamming(queryHash, sku.pHash);
+                                const s = h <= 80 ? 1 - h/256 : 0;
+                                const c = histSim(queryHistogram, sku.colorHistogram);
+                                const shape = huSim(queryHu, sku.huMoments);
+                                const total = s * 0.35 + c * 0.35 + shape * 0.3;
+                                return { id: sku.id, total, structSim: s, colorSim: c, shapeSim: shape };
+                            });
+                            results.sort((a,b) => b.total - a.total);
+                            self.postMessage({ type: 'results', payload: results.slice(0,15) });
+                        }
+                    };
+                    function hamming(a,b){ let d=0; for(let i=0;i<a.length;i++) if(a[i]!==b[i]) d++; return d; }
+                    function histSim(a,b){ if(!a||!b||a.length!==b.length) return 0; let intersection=0, union=0; for(let j=0;j<a.length;j++){ intersection += Math.min(a[j],b[j])*2; union += Math.max(a[j],b[j]); } return union ? Math.min(1, intersection/union) : 0; }
+                    function huSim(a,b){ if(!a||!b||a.length!==7||b.length!==7) return 0; let sum=0; for(let i=0;i<7;i++) sum += Math.pow(a[i]-b[i],2); return 1/(1+Math.sqrt(sum)); }
+                `;
+                searchWorker = new Worker(URL.createObjectURL(new Blob([code], { type: 'application/javascript' })));
+                searchWorker.onmessage = e => {
+                    if (e.data.type === 'results') {
+                        window._lastSearchResults = e.data.payload;
+                        const container = document.getElementById('searchResultsContainer') || document.getElementById('urlResultsContainer');
+                        if (!container) return;
+                        const top = e.data.payload;
+                        if (!top.length) { container.innerHTML = '<div class="empty-state">🤷 未找到相似SKU</div>'; if (typeof window._onUrlSearchResults === 'function' && currentNav === 'url-search') window._onUrlSearchResults([]); return; }
+                        const map = Object.fromEntries(allSkus.map(s => [s.id, s]));
+                        const articleGroupMap = new Map();
+                        for (const r of top) {
+                            const sku = map[r.id]; if (!sku) continue;
+                            const article = sku.article_number || '';
+                            if (!articleGroupMap.has(article) || articleGroupMap.get(article).bestResult.total < r.total) articleGroupMap.set(article, { bestResult: r, sku: sku });
+                        }
+                        const deduplicated = [...articleGroupMap.values()].sort((a,b) => b.bestResult.total - a.bestResult.total);
+                        if (currentNav === 'url-search' && typeof window._onUrlSearchResults === 'function') { window._onUrlSearchResults(deduplicated); return; }
+                        container.innerHTML = deduplicated.map(({ bestResult, sku }) => {
+                            const r = bestResult;
+                            const cls = r.total >= 0.75 ? 'match-high score-high' : r.total >= 0.45 ? 'match-medium score-medium' : 'match-low score-low';
+                            const articleDisplay = sku.article_number ? `<div style="font-weight:800;color:#e67e22;">📌 货号: ${esc(sku.article_number)}</div>` : '';
+                            return `<div class="search-result ${cls.split(' ')[0]}"><img src="${sku.image_url || ''}" style="width:68px;height:68px;object-fit:cover;border-radius:8px;" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2268%22 height=%2268%22><rect fill=%22%23e5e7eb%22 width=%2268%22 height=%2268%22/></svg>'"><div style="flex:1;">${articleDisplay}<div><b>${esc(sku.sku_code)}</b> ${esc(sku.name)}</div><small>${esc(sku.category||'')} | ${esc(sku.responsible||'')} | 结构:${Math.round(r.structSim*100)}% 颜色:${Math.round(r.colorSim*100)}% 形状:${Math.round(r.shapeSim*100)}%</small></div><div class="score-badge ${cls.split(' ')[1]}">${Math.round(r.total*100)}%</div></div>`;
+                        }).join('');
+                    }
+                };
+            }
+
+            function syncFeatures() {
+                const features = allSkus.map(s => ({ id: s.id, pHash: s.phash, colorHistogram: s.color_histogram, huMoments: s.hu_moments }));
+                if (searchWorker) searchWorker.postMessage({ type: 'setFeatures', payload: features });
+            }
+
+            async function uploadImage(file) {
+                const ext = file.name.split('.').pop() || 'jpg';
+                const fileName = `sku-${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+                const { error } = await supabase.storage.from(BUCKET_NAME).upload(fileName, file, { cacheControl: '3600', upsert: false });
+                if (error) throw new Error('上传失败: ' + error.message);
+                const { data } = supabase.storage.from(BUCKET_NAME).getPublicUrl(fileName);
+                return data.publicUrl;
+            }
+
+            async function loadAllSKUs() {
+                const PAGE_SIZE = 1000; let allData = []; let from = 0, to = PAGE_SIZE - 1;
+                while (true) {
+                    const { data, error, count } = await supabase.from('skus').select('*', { count: 'exact' }).order('created_at', { ascending: false }).range(from, to);
+                    if (error) throw error;
+                    if (data && data.length > 0) allData = allData.concat(data);
+                    if (!data || data.length < PAGE_SIZE) break;
+                    if (count !== null && allData.length >= count) break;
+                    from += PAGE_SIZE; to += PAGE_SIZE;
+                }
+                return allData;
+            }
+            async function refreshData() { allSkus = await loadAllSKUs(); document.getElementById('skuCount').textContent = allSkus.length; syncFeatures(); }
+            async function addSKU(sku) { const { error } = await supabase.from('skus').insert(sku); if (error) throw error; await refreshData(); }
+            async function deleteSKU(id) {
+    // 1. 获取该 SKU 的数据（主要为了拿到 image_url）
+    const sku = allSkus.find(s => s.id === id);
+    let fileName = null;
+    if (sku && sku.image_url) {
+        // 从完整 URL 中提取文件路径（去除桶名前缀）
+        const url = new URL(sku.image_url);
+        const pathParts = url.pathname.split('/public/sku-images/');
+        if (pathParts.length > 1) {
+            fileName = pathParts[1]; // 获取到文件名（可能包含子路径）
+        }
+    }
+
+    // 2. 删除数据库记录
+    const { error } = await supabase.from('skus').delete().eq('id', id);
+    if (error) throw error;
+
+    // 3. 如果存在对应文件，异步删除存储图片（不阻塞主流程）
+    if (fileName) {
+        supabase.storage.from(BUCKET_NAME).remove([fileName])
+            .then(({ error }) => {
+                if (error) console.warn('存储文件删除失败（可忽略）:', fileName, error.message);
+            });
+    }
+
+    // 4. 刷新本地数据
+    await refreshData();
+}
+            async function deleteSKUs(ids) {
+    if (!ids.length) return;
+
+    // 1. 收集所有待删除图片的文件名
+    const fileNames = [];
+    for (const id of ids) {
+        const sku = allSkus.find(s => s.id === id);
+        if (sku && sku.image_url) {
+            const url = new URL(sku.image_url);
+            const pathParts = url.pathname.split('/public/sku-images/');
+            if (pathParts.length > 1) {
+                fileNames.push(pathParts[1]);
+            }
+        }
+    }
+
+    // 2. 分批删除数据库记录（每次最多100条，避免语句过长）
+    const batchSize = 100;
+    for (let i = 0; i < ids.length; i += batchSize) {
+        const batch = ids.slice(i, i + batchSize);
+        const { error } = await supabase.from('skus').delete().in('id', batch);
+        if (error) throw error;
+    }
+
+    // 3. 批量删除存储文件
+    if (fileNames.length > 0) {
+        // 去重（不同 SKU 可能指向同一图片）
+        const uniqueFiles = [...new Set(fileNames)];
+        supabase.storage.from(BUCKET_NAME).remove(uniqueFiles)
+            .then(({ error }) => {
+                if (error) console.warn('批量删除存储文件失败:', error.message);
+            });
+    }
+
+    // 4. 刷新本地数据
+    await refreshData();
+}
+            async function updateSKU(id, updates) { const { error } = await supabase.from('skus').update(updates).eq('id', id); if (error) throw error; await refreshData(); showToast('更新成功', 'success'); }
+            async function updateSKUByCode(code, updates) { const { error } = await supabase.from('skus').update(updates).eq('sku_code', code); if (error) throw error; await refreshData(); }
+            function exportSKUsToCSV(skus) { if (!skus.length) { toast('没有可导出的SKU', 'error'); return; } const headers = ['article_number','sku_code','name','category','color','size','price','responsible','image_url']; const lines = [headers.join(',')]; for (const s of skus) { const row = [s.article_number||'', s.sku_code||'', s.name||'', s.category||'', s.color||'', s.size||'', s.price||'', s.responsible||'', s.image_url||''].map(v => `"${(v+'').replace(/"/g, '""')}"`); lines.push(row.join(',')); } const csv = '\uFEFF' + lines.join('\n'); const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `sku_export_${new Date().toISOString().slice(0,10)}.csv`; a.click(); URL.revokeObjectURL(url); toast(`已导出 ${skus.length} 条SKU`, 'success'); }
+            const esc = s => { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; };
+            const toast = (m, t = '') => { const el = document.createElement('div'); el.className = `toast ${t}`; el.textContent = m; document.getElementById('toastContainer').appendChild(el); setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300) }, 2200); };
+            function showToast(m, t) { toast(m, t); }
+
+            function activate(navId) {
+                currentNav = navId;
+                document.querySelectorAll('.nav-item, .nav-sub-item').forEach(e => e.classList.remove('active'));
+                const tgt = document.querySelector(`[data-nav="${navId}"]`); if (tgt) tgt.classList.add('active');
+                const parent = tgt?.dataset.parent;
+                document.querySelectorAll('.nav-sub').forEach(s => s.classList.remove('expanded'));
+                if (parent) { const sub = document.getElementById(`sub-${parent}`); if (sub) sub.classList.add('expanded'); }
+                document.getElementById('breadcrumbCurrent').textContent = tgt?.textContent?.trim() || '商品库';
+                if (navId !== 'url-search') window._onUrlSearchResults = null;
+                render(navId);
+            }
+
+            function render(navId) {
+                switch (navId) {
+                    case 'sku-list': renderSKUList(); break;
+                    case 'add-sku': renderAddPage(); break;
+                    case 'upload-search': renderUploadSearch(); break;
+                    case 'url-search': renderURLSearch(); break;
+                    case 'csv-import': renderCSVImport(); break;
+                    case 'batch-update-url': renderBatchUpdateURL(); break;
+                    case 'batch-update-article-sku': renderBatchUpdateArticleAndSKU(); break;
+                    case 'template-download': renderTemplateDownload(); break;
+                    default: renderSKUList();
+                }
+            }
+
+            function filteredSkus() {
+                let result = currentCategoryFilter ? allSkus.filter(s => s.category === currentCategoryFilter) : [...allSkus];
+                const kw = currentSearchKeyword.trim().toLowerCase();
+                if (kw) result = result.filter(s => { const fields = [s.article_number, s.sku_code, s.name, s.category, s.color, s.size, s.responsible]; return searchMode === 'exact' ? fields.some(f => f && f.toLowerCase() === kw) : fields.filter(Boolean).join(' ').toLowerCase().includes(kw); });
+                return result;
+            }
+
+            function renderSKUList() {
+                const filtered = filteredSkus();
+                const cats = [...new Set(allSkus.map(s => s.category).filter(Boolean))].sort();
+                const html = `
+                <div class="card">
+                    <div class="card-header">
+                        <span>📋 SKU商品列表 · 共 <span id="skuTotalCount">${filtered.length}</span> 个</span>
+                        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                            <input type="text" id="skuSearchInput" placeholder="搜索SKU/货号..." value="${esc(currentSearchKeyword)}" style="padding:6px 10px;border:2px solid var(--border);border-radius:18px;font-size:0.8rem;width:160px;">
+                            <button class="btn btn-sm" id="btnSearch" style="background:var(--primary);color:#fff;">🔍</button>
+                            <button class="btn btn-sm" id="btnSearchMode">${searchMode==='exact'?'精确':'模糊'}</button>
+                            <button class="btn btn-sm" id="btnClearSearch">✕</button>
+                            <button class="btn btn-outline btn-sm" id="btnExportCSV">📥 导出</button>
+                            <button class="btn btn-primary btn-sm" id="btnAddSkuTop">➕ 添加</button>
+                            <button class="btn btn-outline btn-sm" id="btnToggleBatch">${batchMode?'❌ 取消批量':'☑️ 批量操作'}</button>
+                            <button class="btn btn-outline btn-sm" id="btnRecalcFeatures" title="重新计算所有SKU的pHASH、颜色直方图和Hu矩">🔄 重算特征</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        ${cats.length ? `<div class="category-filter" id="categoryFilter"><button class="filter-btn ${currentCategoryFilter===''?'active':''}" data-category="">全部</button>${cats.map(c=>`<button class="filter-btn ${currentCategoryFilter===c?'active':''}" data-category="${esc(c)}">${esc(c)}</button>`).join('')}</div>` : ''}
+                        <div id="skuGridContainer">${filtered.length ? renderCards(filtered) : '<div class="empty-state">🔍 未找到匹配的SKU</div>'}</div>
+                        ${batchMode ? `<div class="batch-actions"><label><input type="checkbox" id="selectAllCheckbox"> 全选</label><button class="btn btn-danger btn-sm" id="btnDeleteSelected">🗑️ 删除所选</button></div>` : ''}
+                    </div>
+                </div>`;
+                document.getElementById('contentBody').innerHTML = html;
+                const searchInput = document.getElementById('skuSearchInput'), searchBtn = document.getElementById('btnSearch'), modeBtn = document.getElementById('btnSearchMode'), clearBtn = document.getElementById('btnClearSearch'), exportBtn = document.getElementById('btnExportCSV');
+                const doSearch = () => { currentSearchKeyword = searchInput.value; renderSKUList(); };
+                searchBtn.addEventListener('click', doSearch); searchInput.addEventListener('keypress', e => { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } });
+                modeBtn.addEventListener('click', () => { searchMode = searchMode === 'fuzzy' ? 'exact' : 'fuzzy'; renderSKUList(); });
+                clearBtn.addEventListener('click', () => { currentSearchKeyword = ''; searchInput.value = ''; renderSKUList(); });
+                exportBtn.addEventListener('click', () => exportSKUsToCSV(filteredSkus()));
+                document.getElementById('btnAddSkuTop').addEventListener('click', () => activate('add-sku'));
+                document.getElementById('btnToggleBatch').addEventListener('click', () => { batchMode = !batchMode; renderSKUList(); });
+                document.querySelectorAll('#categoryFilter .filter-btn').forEach(btn => btn.addEventListener('click', function() { document.querySelectorAll('#categoryFilter .filter-btn').forEach(b => b.classList.remove('active')); this.classList.add('active'); currentCategoryFilter = this.dataset.category; batchMode = false; renderSKUList(); }));
+                document.getElementById('skuGridContainer').addEventListener('click', e => {
+                    const card = e.target.closest('.sku-card'); if (!card) return; const id = Number(card.dataset.id);
+                    if (e.target.closest('.batch-checkbox')) return;
+                    if (e.target.closest('.sku-edit')) { const sku = allSkus.find(s => s.id === id); if (sku) openEditModal(sku); }
+                    if (e.target.closest('.sku-delete')) { if (confirm('确定删除？')) { deleteSKU(id).then(() => { renderSKUList(); toast('已删除', 'success'); }); } }
+                });
+                if (batchMode) {
+                    document.getElementById('selectAllCheckbox').addEventListener('change', function() { document.querySelectorAll('.batch-checkbox').forEach(cb => cb.checked = this.checked); });
+                    document.getElementById('btnDeleteSelected').addEventListener('click', async () => { const ids = [...document.querySelectorAll('.batch-checkbox:checked')].map(cb => Number(cb.dataset.id)); if (!ids.length) return toast('请选择', 'error'); if (!confirm(`确定删除 ${ids.length} 个？`)) return; await deleteSKUs(ids); batchMode = false; toast('已删除', 'success'); renderSKUList(); });
+                }
+                document.getElementById('btnRecalcFeatures').addEventListener('click', async () => {
+                    if (!confirm('将重新下载所有图片并计算特征，确定？')) return;
+                    const btn = document.getElementById('btnRecalcFeatures'); btn.disabled = true; btn.textContent = '⏳ 计算中...';
+                    let ok = 0, fail = 0; const total = allSkus.length;
+                    for (let i = 0; i < total; i++) {
+                        const sku = allSkus[i]; btn.textContent = `⏳ ${i+1}/${total}`;
+                        try { const img = await loadURLtoImg(sku.image_url); const ph = computeHashFromImg(img); const ch = computeHistFromImg(img); const hu = computeHuMoments(img); await supabase.from('skus').update({ phash: ph, color_histogram: ch, hu_moments: hu }).eq('id', sku.id); ok++; } catch (e) { fail++; }
+                    }
+                    btn.textContent = '🔄 重算特征'; btn.disabled = false;
+                    toast(`完成：成功 ${ok}，失败 ${fail}`, 'success'); await refreshData(); syncFeatures();
+                });
+            }
+
+            function renderCards(skus) {
+                if (skus.length > 500) return `<div class="sku-grid">${skus.slice(0,500).map(s => cardHTML(s)).join('')}</div><p style="text-align:center;">仅显示前500个</p>`;
+                return `<div class="sku-grid">${skus.map(s => cardHTML(s)).join('')}</div>`;
+            }
+            function cardHTML(s) {
+                return `<div class="sku-card" data-id="${s.id}">${batchMode ? `<input type="checkbox" class="batch-checkbox" data-id="${s.id}">` : ''}<img src="${s.image_url}" class="sku-thumb" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2264%22 height=%2264%22><rect fill=%22%23e5e7eb%22 width=%2264%22 height=%2264%22/></svg>'"><div class="sku-info">${s.article_number ? `<div class="article-number">📌 货号: ${esc(s.article_number)}</div>` : ''}<div class="sku-code">${esc(s.sku_code)}</div><div>${esc(s.name)}</div><div class="sku-meta">${s.category?`<span class="sku-tag category">${esc(s.category)}</span>`:''}${s.responsible?`<span class="sku-tag responsible">${esc(s.responsible)}</span>`:''}${s.color?`<span class="sku-tag">${esc(s.color)}</span>`:''}${s.size?`<span class="sku-tag">${esc(s.size)}</span>`:''}${s.price?`<span class="sku-tag">¥${esc(s.price)}</span>`:''}</div></div><button class="sku-edit" style="position:absolute;top:6px;right:32px;">✏️</button><button class="sku-delete" style="position:absolute;top:6px;right:6px;">🗑️</button></div>`;
+            }
+
+            function openEditModal(sku) { document.getElementById('editSkuId').value = sku.id; document.getElementById('editSkuArticleNumber').value = sku.article_number || ''; document.getElementById('editSkuCode').value = sku.sku_code; document.getElementById('editSkuName').value = sku.name; document.getElementById('editSkuCategory').value = sku.category || ''; document.getElementById('editSkuColor').value = sku.color || ''; document.getElementById('editSkuSize').value = sku.size || ''; document.getElementById('editSkuPrice').value = sku.price || ''; document.getElementById('editSkuResponsible').value = sku.responsible || ''; document.getElementById('editSkuImgPreview').src = sku.image_url || ''; editImgFile = null; document.getElementById('editModalOverlay').style.display = 'flex'; }
+            document.getElementById('editModalClose').addEventListener('click', () => document.getElementById('editModalOverlay').style.display = 'none');
+            document.getElementById('editModalCancel').addEventListener('click', () => document.getElementById('editModalOverlay').style.display = 'none');
+            document.getElementById('editSkuImgPreview').addEventListener('click', () => document.getElementById('editSkuImgInput').click());
+            document.getElementById('editSkuImgInput').addEventListener('change', (e) => { if (e.target.files[0]) { editImgFile = e.target.files[0]; const reader = new FileReader(); reader.onload = ev => document.getElementById('editSkuImgPreview').src = ev.target.result; reader.readAsDataURL(e.target.files[0]); } });
+            document.getElementById('editModalSave').addEventListener('click', async () => {
+                const id = Number(document.getElementById('editSkuId').value);
+                const updates = { article_number: document.getElementById('editSkuArticleNumber').value.trim(), name: document.getElementById('editSkuName').value, category: document.getElementById('editSkuCategory').value, color: document.getElementById('editSkuColor').value, size: document.getElementById('editSkuSize').value, price: document.getElementById('editSkuPrice').value, responsible: document.getElementById('editSkuResponsible').value };
+                try {
+                    if (editImgFile) { updates.image_url = await uploadImage(editImgFile); const { img } = await loadFileToImg(editImgFile); updates.phash = computeHashFromImg(img); updates.color_histogram = computeHistFromImg(img); updates.hu_moments = computeHuMoments(img); }
+                    await updateSKU(id, updates); document.getElementById('editModalOverlay').style.display = 'none'; renderSKUList();
+                } catch (e) { toast('更新失败: ' + e.message, 'error'); }
+            });
+
+            function renderAddPage() {
+                document.getElementById('contentBody').innerHTML = `
+                <div class="card"><div class="card-header">📝 添加新SKU</div><div class="card-body" style="max-width:450px;">
+                    <div class="form-group"><label>货号</label><input id="addSkuArticleNumber"></div>
+                    <div class="form-group"><label>SKU编号 *</label><input id="addSkuCode" value="SKU-${Date.now().toString(36).toUpperCase()}"></div>
+                    <div class="form-group"><label>商品名称</label><input id="addSkuName"></div>
+                    <div class="form-group"><label>服装类目</label><input list="catList" id="addSkuCategory"><datalist id="catList"><option value="上装"><option value="下装"><option value="连衣裙"><option value="外套"><option value="配饰"></datalist></div>
+                    <div class="form-group"><label>颜色</label><input id="addSkuColor"></div>
+                    <div class="form-group"><label>尺码</label><input id="addSkuSize"></div>
+                    <div class="form-group"><label>价格</label><input id="addSkuPrice"></div>
+                    <div class="form-group"><label>负责人</label><input id="addSkuResponsible"></div>
+                    <div class="form-group"><label>商品图片 *</label><img id="addSkuImgPreview" class="img-preview-small" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23f3f4f6' width='100' height='100'/%3E%3C/svg%3E"><input type="file" id="addSkuImgInput" accept="image/*" style="display:none;"></div>
+                    <button class="btn btn-primary" id="btnSaveSku">💾 保存</button>
+                    <button class="btn btn-outline btn-sm" id="btnBack">← 返回</button>
+                </div></div>`;
+                let file = null;
+                document.getElementById('addSkuImgPreview').onclick = () => document.getElementById('addSkuImgInput').click();
+                document.getElementById('addSkuImgInput').onchange = (e) => { if (e.target.files[0]) { file = e.target.files[0]; const reader = new FileReader(); reader.onload = ev => document.getElementById('addSkuImgPreview').src = ev.target.result; reader.readAsDataURL(e.target.files[0]); } };
+                document.getElementById('btnBack').onclick = () => activate('sku-list');
+                document.getElementById('btnSaveSku').onclick = async () => {
+                    const code = document.getElementById('addSkuCode').value.trim();
+                    if (!code || !file) return toast('编号和图片必填', 'error');
+                    try {
+                        const url = await uploadImage(file); const { img } = await loadFileToImg(file);
+                        await addSKU({ article_number: document.getElementById('addSkuArticleNumber').value.trim(), sku_code: code, name: document.getElementById('addSkuName').value.trim(), category: document.getElementById('addSkuCategory').value.trim(), color: document.getElementById('addSkuColor').value.trim(), size: document.getElementById('addSkuSize').value.trim(), price: document.getElementById('addSkuPrice').value.trim(), responsible: document.getElementById('addSkuResponsible').value.trim(), image_url: url, phash: computeHashFromImg(img), color_histogram: computeHistFromImg(img), hu_moments: computeHuMoments(img), created_at: new Date() });
+                        toast('添加成功', 'success'); activate('sku-list');
+                    } catch (e) { toast('保存失败: ' + e.message, 'error'); }
+                };
+            }
+
+            // ========== 上传搜图（已传递Hu矩） ==========
+            function renderUploadSearch() {
+                document.getElementById('contentBody').innerHTML = `
+                <div class="card"><div class="card-header">🔍 上传图片搜图</div><div class="card-body">
+                    <div class="drop-zone" id="dropZone"><span class="drop-icon">📷</span><span>点击/拖拽/粘贴图片</span><img class="preview" id="searchPreview" style="display:none;"><button class="preview-overlay" id="clearPreview" style="display:none;">✕</button></div>
+                    <div style="margin-top:12px;display:flex;gap:10px;justify-content:center;"><button class="btn btn-primary" id="btnSearchNow" disabled>🔎 搜索</button><button class="btn btn-outline" id="btnCamera">📸 拍照</button></div>
+                    <input type="file" id="fileInput" accept="image/*" style="display:none;"><input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;">
+                    <div id="searchResultsContainer" style="margin-top:16px;"></div>
+                </div></div>`;
+                const dz = document.getElementById('dropZone'), pv = document.getElementById('searchPreview'), clr = document.getElementById('clearPreview'), btnS = document.getElementById('btnSearchNow'), fi = document.getElementById('fileInput'), ci = document.getElementById('cameraInput'), res = document.getElementById('searchResultsContainer');
+                const doSearch = () => {
+                    if (!searchImageData) return;
+                    res.innerHTML = '<p>🔎 搜索中...</p>';
+                    const img = new Image();
+                    img.onload = () => {
+                        const hu = computeHuMoments(img);
+                        searchWorker.postMessage({ type: 'search', payload: { queryHash: computeHashFromImg(img), queryHistogram: computeHistFromImg(img), queryHu: hu } });
+                    };
+                    img.src = searchImageData;
+                };
+                async function handleFile(file) {
+                    if (!file || !file.type.startsWith('image/')) return;
+                    const { img, dataUrl } = await loadFileToImg(file);
+                    searchImageData = compressImg(img, 400);
+                    pv.src = searchImageData; pv.style.display = 'block'; clr.style.display = 'flex';
+                    dz.querySelector('.drop-icon').style.display = 'none';
+                    dz.querySelector('.drop-text') && (dz.querySelector('.drop-text').style.display = 'none');
+                    btnS.disabled = false;
+                    doSearch();
+                }
+                dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+                dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+                dz.addEventListener('drop', async e => { e.preventDefault(); dz.classList.remove('drag-over'); if (e.dataTransfer.files[0]) await handleFile(e.dataTransfer.files[0]); });
+                dz.addEventListener('click', () => { if (!searchImageData) fi.click(); });
+                clr.addEventListener('click', e => { e.stopPropagation(); searchImageData = null; pv.src = ''; pv.style.display = 'none'; clr.style.display = 'none'; dz.querySelector('.drop-icon').style.display = ''; const dropText = dz.querySelector('.drop-text'); if (dropText) dropText.style.display = ''; btnS.disabled = true; res.innerHTML = ''; });
+                fi.addEventListener('change', async () => { if (fi.files[0]) await handleFile(fi.files[0]); fi.value = ''; });
+                btnS.addEventListener('click', doSearch);
+                document.getElementById('btnCamera')?.addEventListener('click', () => ci.click());
+                ci.addEventListener('change', async () => { if (ci.files[0]) await handleFile(ci.files[0]); ci.value = ''; });
+            }
+
+            // ========== URL搜图增强版（全面支持Hu矩） ==========
+            function renderURLSearch() {
+                const history = getSearchHistory();
+                document.getElementById('contentBody').innerHTML = `
+                <div class="card">
+                    <div class="card-header">
+                        <span>🌐 以图搜图 · 高级搜图</span>
+                        <span style="font-size:0.78rem;color:var(--text-secondary);">支持URL、拖拽上传、粘贴图片 · 按货号去重 · 形状增强</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="search-hero">
+                            <div class="hero-title">🔍 智能以图搜图</div>
+                            <div class="hero-subtitle">粘贴图片URL、拖拽图片或直接粘贴截图，快速找到相似SKU</div>
+                            <div class="search-tabs" id="searchTabs">
+                                <button class="search-tab active" data-tab="url-mode">🔗 URL搜图</button>
+                                <button class="search-tab" data-tab="upload-mode">📷 本地上传</button>
+                            </div>
+                            <div id="urlModePanel">
+                                <div class="url-input-group">
+                                    <span style="font-size:1.1rem;flex-shrink:0;">🔗</span>
+                                    <input type="text" id="urlInput" placeholder="粘贴商品图片URL，支持淘宝/天猫/1688等图片地址...">
+                                    <button class="btn btn-primary btn-search-go" id="btnUrlSearch">🔍 搜索</button>
+                                </div>
+                                ${history.length ? `
+                                <div class="search-history-tags" id="searchHistoryTags">
+                                    <span style="font-size:0.7rem;color:#9ca3af;flex-shrink:0;">🕐 历史：</span>
+                                    ${history.slice(0, 8).map(h => `
+                                    <span class="history-tag" data-url="${esc(h.url)}" title="${esc(h.url)}">
+                                        ${esc(h.url.length > 35 ? h.url.substring(0, 35) + '...' : h.url)}
+                                        <span class="hist-delete" data-url="${esc(h.url)}">✕</span>
+                                    </span>`).join('')}
+                                    ${history.length > 8 ? `<span style="font-size:0.7rem;color:#9ca3af;">+${history.length - 8}条</span>` : ''}
+                                    <button class="btn btn-sm" id="btnClearHistory" style="font-size:0.65rem;padding:3px 8px;background:#fee2e2;color:#dc2626;border:none;border-radius:12px;cursor:pointer;">清空历史</button>
+                                </div>` : '<p style="font-size:0.73rem;color:#9ca3af;margin-top:6px;">暂无搜索历史，输入URL开始搜索</p>'}
+                            </div>
+                            <div id="uploadModePanel" style="display:none;">
+                                <div class="drop-zone-inline" id="urlDropZone">
+                                    <span style="font-size:2rem;">📷</span>
+                                    <span style="color:#6b7280;">点击或拖拽图片到此处</span>
+                                    <span style="font-size:0.7rem;color:#9ca3af;">支持 JPG/PNG/WebP，自动压缩搜索</span>
+                                    <img class="preview-img-inline" id="urlUploadPreview" style="display:none;" alt="预览">
+                                    <button class="clear-preview-btn" id="urlClearPreview" style="display:none;">✕</button>
+                                </div>
+                                <input type="file" id="urlFileInput" accept="image/*" style="display:none;">
+                                <button class="btn btn-primary btn-sm" id="btnUrlUploadSearch" style="margin-top:10px;" disabled>🔍 开始搜索</button>
+                            </div>
+                        </div>
+                        <div id="urlPreviewContainer" style="margin-top:16px;text-align:center;"></div>
+                        <div id="urlResultsWrapper" style="margin-top:16px;">
+                            <div id="urlResultsContainer"></div>
+                        </div>
+                    </div>
+                </div>`;
+
+                const urlInput = document.getElementById('urlInput');
+                const btnUrlSearch = document.getElementById('btnUrlSearch');
+                const urlPreviewContainer = document.getElementById('urlPreviewContainer');
+                const urlResultsContainer = document.getElementById('urlResultsContainer');
+                const searchTabs = document.getElementById('searchTabs');
+                const urlModePanel = document.getElementById('urlModePanel');
+                const uploadModePanel = document.getElementById('uploadModePanel');
+                const urlDropZone = document.getElementById('urlDropZone');
+                const urlUploadPreview = document.getElementById('urlUploadPreview');
+                const urlClearPreview = document.getElementById('urlClearPreview');
+                const urlFileInput = document.getElementById('urlFileInput');
+                const btnUrlUploadSearch = document.getElementById('btnUrlUploadSearch');
+
+                let currentSearchMode = 'url';
+                let uploadedImageData = null;
+                let urlSearchResultsData = [];
+                let urlSimilarityThreshold = 0;
+                let urlCategoryFilter = '';
+
+                searchTabs.addEventListener('click', (e) => {
+                    const tab = e.target.closest('.search-tab');
+                    if (!tab) return;
+                    currentSearchMode = tab.dataset.tab;
+                    searchTabs.querySelectorAll('.search-tab').forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    if (currentSearchMode === 'url-mode') {
+                        urlModePanel.style.display = 'block';
+                        uploadModePanel.style.display = 'none';
+                    } else {
+                        urlModePanel.style.display = 'none';
+                        uploadModePanel.style.display = 'block';
+                    }
+                    urlResultsContainer.innerHTML = '';
+                    urlPreviewContainer.innerHTML = '';
+                    urlSearchResultsData = [];
+                });
+
+                const performURLSearch = async (url) => {
+                    if (!url || !url.trim()) return toast('请输入图片URL', 'error');
+                    const trimmedUrl = url.trim();
+                    urlPreviewContainer.innerHTML = '<p style="color:#6b7280;">⏳ 加载图片中...</p>';
+                    urlResultsContainer.innerHTML = '<p style="color:#6b7280;">🔎 准备搜索...</p>';
+                    urlSearchResultsData = [];
+                    try {
+                        const img = await loadURLtoImg(trimmedUrl);
+                        const dataUrl = compressImg(img, 400);
+                        urlPreviewContainer.innerHTML = `<div style="display:inline-block;position:relative;"><img src="${dataUrl}" style="max-width:260px;max-height:240px;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,0.1);border:3px solid var(--primary);"><br><small style="color:#6b7280;">✅ 图片加载成功，正在搜索...</small></div>`;
+                        urlResultsContainer.innerHTML = '<p style="color:#6b7280;">🔎 正在比对特征，按货号去重中...</p>';
+                        addSearchHistory(trimmedUrl);
+                        const hu = computeHuMoments(img);
+                        searchWorker.postMessage({
+                            type: 'search',
+                            payload: { queryHash: computeHashFromImg(img), queryHistogram: computeHistFromImg(img), queryHu: hu }
+                        });
+                    } catch (e) {
+                        urlPreviewContainer.innerHTML = `<p style="color:#ef4444;">❌ ${esc(e.message)}</p><p style="font-size:0.75rem;color:#9ca3af;">提示：请确认图片URL可公开访问，且不是防盗链图片</p>`;
+                        urlResultsContainer.innerHTML = '';
+                    }
+                };
+
+                btnUrlSearch.addEventListener('click', () => performURLSearch(urlInput.value));
+                urlInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') { e.preventDefault(); performURLSearch(urlInput.value); } });
+
+                document.getElementById('searchHistoryTags')?.addEventListener('click', (e) => {
+                    const histTag = e.target.closest('.history-tag');
+                    const delBtn = e.target.closest('.hist-delete');
+                    if (delBtn) {
+                        e.stopPropagation();
+                        removeSearchHistory(delBtn.dataset.url);
+                        renderURLSearch();
+                        return;
+                    }
+                    if (histTag && !e.target.closest('.hist-delete')) {
+                        const histUrl = histTag.dataset.url;
+                        urlInput.value = histUrl;
+                        performURLSearch(histUrl);
+                    }
+                });
+
+                document.getElementById('btnClearHistory')?.addEventListener('click', () => {
+                    if (confirm('确定清空所有搜索历史？')) { clearSearchHistory(); renderURLSearch(); toast('搜索历史已清空', 'success'); }
+                });
+
+                // 上传模式
+                urlDropZone.addEventListener('dragover', (e) => { e.preventDefault(); urlDropZone.classList.add('drag-over'); });
+                urlDropZone.addEventListener('dragleave', () => urlDropZone.classList.remove('drag-over'));
+                urlDropZone.addEventListener('drop', async (e) => { e.preventDefault(); urlDropZone.classList.remove('drag-over'); if (e.dataTransfer.files[0]) await handleUploadFile(e.dataTransfer.files[0]); });
+                urlDropZone.addEventListener('click', () => { if (!uploadedImageData) urlFileInput.click(); });
+                urlClearPreview.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    uploadedImageData = null;
+                    urlUploadPreview.src = ''; urlUploadPreview.style.display = 'none';
+                    urlClearPreview.style.display = 'none';
+                    urlDropZone.querySelectorAll('span').forEach(s => s.style.display = '');
+                    btnUrlUploadSearch.disabled = true;
+                    urlResultsContainer.innerHTML = ''; urlPreviewContainer.innerHTML = '';
+                    urlSearchResultsData = [];
+                });
+                urlFileInput.addEventListener('change', async () => { if (urlFileInput.files[0]) await handleUploadFile(urlFileInput.files[0]); urlFileInput.value = ''; });
+                btnUrlUploadSearch.addEventListener('click', () => {
+                    if (!uploadedImageData) return;
+                    urlPreviewContainer.innerHTML = `<div style="display:inline-block;position:relative;"><img src="${uploadedImageData}" style="max-width:260px;max-height:240px;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,0.1);border:3px solid var(--primary);"><br><small style="color:#6b7280;">✅ 正在搜索...</small></div>`;
+                    urlResultsContainer.innerHTML = '<p style="color:#6b7280;">🔎 正在比对特征，按货号去重中...</p>';
+                    urlSearchResultsData = [];
+                    const img = new Image();
+                    img.onload = () => {
+                        const hu = computeHuMoments(img);
+                        searchWorker.postMessage({ type:'search', payload:{ queryHash: computeHashFromImg(img), queryHistogram: computeHistFromImg(img), queryHu: hu } });
+                    };
+                    img.src = uploadedImageData;
+                });
+
+                async function handleUploadFile(file) {
+                    if (!file || !file.type.startsWith('image/')) return;
+                    const { img, dataUrl } = await loadFileToImg(file);
+                    uploadedImageData = compressImg(img, 400);
+                    urlUploadPreview.src = uploadedImageData; urlUploadPreview.style.display = 'block';
+                    urlClearPreview.style.display = 'flex';
+                    urlDropZone.querySelectorAll('span').forEach(s => s.style.display = 'none');
+                    btnUrlUploadSearch.disabled = false;
+                    urlPreviewContainer.innerHTML = `<div style="display:inline-block;position:relative;"><img src="${uploadedImageData}" style="max-width:260px;max-height:240px;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,0.1);border:3px solid var(--primary);"><br><small style="color:#6b7280;">✅ 正在搜索...</small></div>`;
+                    urlResultsContainer.innerHTML = '<p style="color:#6b7280;">🔎 正在比对特征，按货号去重中...</p>';
+                    urlSearchResultsData = [];
+                    const searchImg = new Image();
+                    searchImg.onload = () => {
+                        const hu = computeHuMoments(searchImg);
+                        searchWorker.postMessage({ type:'search', payload:{ queryHash: computeHashFromImg(searchImg), queryHistogram: computeHistFromImg(searchImg), queryHu: hu } });
+                    };
+                    searchImg.src = uploadedImageData;
+                }
+
+                window._onUrlSearchResults = (deduplicatedResults) => {
+                    urlSearchResultsData = deduplicatedResults;
+                    urlSimilarityThreshold = 0;
+                    urlCategoryFilter = '';
+                    renderFilteredResults();
+                };
+
+                function renderFilteredResults() {
+                    if (!urlSearchResultsData.length) {
+                        urlResultsContainer.innerHTML = '<div class="empty-state"><span class="empty-icon">🤷</span>未找到相似SKU<br><small>尝试更换图片或检查图片质量</small></div>';
+                        return;
+                    }
+                    let filtered = urlSearchResultsData;
+                    if (urlSimilarityThreshold > 0) filtered = filtered.filter(r => r.bestResult.total >= urlSimilarityThreshold);
+                    if (urlCategoryFilter) filtered = filtered.filter(r => r.sku.category === urlCategoryFilter);
+                    const allCats = [...new Set(urlSearchResultsData.map(r => r.sku.category).filter(Boolean))].sort();
+                    const highCount = urlSearchResultsData.filter(r => r.bestResult.total >= 0.75).length;
+                    const mediumCount = urlSearchResultsData.filter(r => r.bestResult.total >= 0.45 && r.bestResult.total < 0.75).length;
+
+                    let html = '';
+                    html += `<div class="result-stats-bar">
+                        <span class="stats-text">找到 <span class="highlight">${urlSearchResultsData.length}</span> 个相似SKU（按货号去重）</span>
+                        <span style="font-size:0.78rem;">
+                            <span class="quick-match-badge exact">🟢 高度相似 ${highCount}</span>
+                            <span class="quick-match-badge similar" style="margin-left:4px;">🟡 中度相似 ${mediumCount}</span>
+                        </span>
+                    </div>`;
+                    html += `<div style="margin-bottom:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                        <span style="font-weight:600;font-size:0.82rem;white-space:nowrap;">🎚️ 最低相似度：</span>
+                        <div class="slider-group">
+                            <input type="range" id="urlSimThreshold" min="0" max="100" value="${Math.round(urlSimilarityThreshold * 100)}" step="5">
+                            <span class="slider-value" id="urlSimValue">${Math.round(urlSimilarityThreshold * 100)}%</span>
+                        </div>
+                        <button class="btn btn-sm" id="btnResetFilter" style="background:var(--bg);font-size:0.7rem;">↺ 重置筛选</button>
+                    </div>`;
+                    if (allCats.length) {
+                        html += `<div class="category-filter" id="urlCatFilter">
+                            <button class="filter-btn ${urlCategoryFilter === '' ? 'active' : ''}" data-category="">全部类目</button>
+                            ${allCats.map(c => `<button class="filter-btn ${urlCategoryFilter === c ? 'active' : ''}" data-category="${esc(c)}">${esc(c)}</button>`).join('')}
+                        </div>`;
+                    }
+                    if (!filtered.length) {
+                        html += '<div class="empty-state"><span class="empty-icon">🔍</span>当前筛选条件下无结果<br><small>请尝试降低相似度阈值或切换类目</small></div>';
+                    } else {
+                        html += filtered.map(({ bestResult, sku }) => {
+                            const r = bestResult;
+                            const totalPct = Math.round(r.total * 100);
+                            const cls = r.total >= 0.75 ? 'match-high score-high' : r.total >= 0.45 ? 'match-medium score-medium' : 'match-low score-low';
+                            const articleDisplay = sku.article_number ? `<div style="font-weight:800;color:#e67e22;">📌 货号: ${esc(sku.article_number)}</div>` : '';
+                            const matchLabel = r.total >= 0.75 ? '🟢 高度相似' : r.total >= 0.45 ? '🟡 中度相似' : '⚪ 低度相似';
+                            return `<div class="search-result ${cls.split(' ')[0]}" style="cursor:pointer;" data-sku-id="${sku.id}">
+                                <img src="${sku.image_url || ''}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;flex-shrink:0;" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2272%22 height=%2272%22><rect fill=%22%23e5e7eb%22 width=%2272%22 height=%2272%22/></svg>'">
+                                <div style="flex:1;min-width:0;">
+                                    ${articleDisplay}
+                                    <div style="font-weight:700;">${esc(sku.sku_code)} <span style="font-weight:400;color:#6b7280;">${esc(sku.name)}</span></div>
+                                    <small style="color:#6b7280;">${esc(sku.category||'')} ${sku.category && sku.responsible ? '|' : ''} ${esc(sku.responsible||'')}</small>
+                                    <div style="margin-top:2px;">
+                                        <span style="font-size:0.7rem;color:#9ca3af;">结构:${Math.round(r.structSim*100)}%</span>
+                                        <span style="font-size:0.7rem;color:#9ca3af;margin-left:6px;">颜色:${Math.round(r.colorSim*100)}%</span>
+                                        <span style="font-size:0.7rem;color:#9ca3af;margin-left:6px;">形状:${Math.round(r.shapeSim*100)}%</span>
+                                        <span style="font-size:0.68rem;margin-left:6px;">${matchLabel}</span>
+                                    </div>
+                                </div>
+                                <div class="score-badge ${cls.split(' ')[1]}" style="font-size:0.85rem;">${totalPct}%</div>
+                            </div>`;
+                        }).join('');
+                    }
+                    urlResultsContainer.innerHTML = html;
+
+                    const simSlider = document.getElementById('urlSimThreshold');
+                    const simValue = document.getElementById('urlSimValue');
+                    if (simSlider && simValue) {
+                        simSlider.addEventListener('input', () => {
+                            urlSimilarityThreshold = parseInt(simSlider.value) / 100;
+                            simValue.textContent = Math.round(urlSimilarityThreshold * 100) + '%';
+                            renderFilteredResults();
+                        });
+                    }
+                    document.getElementById('btnResetFilter')?.addEventListener('click', () => {
+                        urlSimilarityThreshold = 0; urlCategoryFilter = ''; renderFilteredResults();
+                    });
+                    document.querySelectorAll('#urlCatFilter .filter-btn').forEach(btn => {
+                        btn.addEventListener('click', function() { urlCategoryFilter = this.dataset.category; renderFilteredResults(); });
+                    });
+                    urlResultsContainer.querySelectorAll('.search-result').forEach(card => {
+                        card.addEventListener('click', () => {
+                            const skuId = Number(card.dataset.skuId);
+                            const sku = allSkus.find(s => s.id === skuId);
+                            if (sku) {
+                                currentSearchKeyword = sku.sku_code;
+                                searchMode = 'exact';
+                                activate('sku-list');
+                                toast(`已定位到 SKU: ${sku.sku_code}`, 'success');
+                            }
+                        });
+                    });
+                }
+            }
+
+            // ========== 批量导入（增加hu_moments处理） ==========
+            function renderCSVImport() {
+                document.getElementById('contentBody').innerHTML = `
+                <div class="card"><div class="card-header">📥 批量导入CSV (每批200条，重复自动跳过)</div>
+                <div class="card-body">
+                    <p style="font-size:0.85rem;margin-bottom:8px;">⚠️ 仅<strong>SKU编号</strong>必填，货号可选。图片列可填写网络URL，导入时会自动计算特征值。重复SKU编号将自动跳过。 <button class="btn btn-outline btn-sm" id="btnTmplCSV">📥 模板</button></p>
+                    <div class="form-group"><label>📁 上传CSV</label><input type="file" id="csvFileInput" accept=".csv,.txt"></div>
+                    <div class="form-group"><label>📋 粘贴数据</label><textarea id="csvTextArea" rows="5" placeholder="article_number,sku_code,name,category,color,size,price,responsible,image_url"></textarea></div>
+                    <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="hasHeader" checked> 首行为标题</label>
+                    <div id="batchPreviewContainer" style="display:none;">
+                        <div style="max-height:180px;overflow:auto;"><table class="import-preview-table" id="previewTable"></table></div>
+                        <div id="batchInfo" style="font-size:0.8rem;margin:5px 0;"></div>
+                        <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
+                        <div id="batchStatus"></div>
+                    </div>
+                    <button class="btn btn-primary" id="btnBatchImport" disabled>📥 开始导入</button>
+                </div></div>`;
+                const BATCH = 200;
+                let parsed = [];
+                const csvFile = document.getElementById('csvFileInput'), csvArea = document.getElementById('csvTextArea'), headerChk = document.getElementById('hasHeader');
+                const previewDiv = document.getElementById('batchPreviewContainer'), previewTable = document.getElementById('previewTable'), infoDiv = document.getElementById('batchInfo');
+                const bar = document.getElementById('progressBar'), fill = document.getElementById('progressFill'), statusDiv = document.getElementById('batchStatus'), importBtn = document.getElementById('btnBatchImport');
+                const parseCSV = (text, header) => {
+                    const lines = text.split(/\r?\n/).filter(l => l.trim());
+                    if (!lines.length) return [];
+                    const sep = lines[0].includes('\t') ? '\t' : ',';
+                    const rows = lines.map(l => l.split(sep).map(c => c.trim().replace(/^"|"$/g, '')));
+                    let heads = [], start = 0;
+                    if (header) { heads = rows[0].map(h => h.toLowerCase()); start = 1; }
+                    else heads = ['article_number','sku_code','name','category','color','size','price','responsible','image_url'];
+                    const mapField = h => {
+                        h = h.toLowerCase();
+                        if (/货号|article|product.code|商品编号/.test(h)) return 'articleNumber';
+                        if (/sku|编号/.test(h)) return 'skuCode';
+                        if (/名称|name/.test(h)) return 'name';
+                        if (/类目|category/.test(h)) return 'category';
+                        if (/颜色|color/.test(h)) return 'color';
+                        if (/尺码|size/.test(h)) return 'size';
+                        if (/价格|price/.test(h)) return 'price';
+                        if (/负责人|responsible/.test(h)) return 'responsible';
+                        if (/图片|image|url/.test(h)) return 'imageUrl';
+                        return null;
+                    };
+                    const colMap = heads.map(mapField);
+                    return rows.slice(start).map(row => {
+                        const obj = { articleNumber:'', skuCode:'', name:'', category:'', color:'', size:'', price:'', responsible:'', imageUrl:'' };
+                        colMap.forEach((f, i) => { if (f && i < row.length) obj[f] = row[i]; });
+                        return obj;
+                    }).filter(o => o.skuCode);
+                };
+                const updatePreview = () => {
+                    const t = csvArea.value.trim();
+                    if (!t) { previewDiv.style.display = 'none'; importBtn.disabled = true; return; }
+                    parsed = parseCSV(t, headerChk.checked);
+                    previewDiv.style.display = 'block';
+                    if (!parsed.length) { previewTable.innerHTML = '<tr><td colspan="9">无有效SKU编号</td></tr>'; importBtn.disabled = true; infoDiv.textContent = ''; return; }
+                    previewTable.innerHTML = `<thead><tr>${['货号','SKU编号*','名称','类目','颜色','尺码','价格','负责人','图片URL'].map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${parsed.slice(0,30).map(r => `<tr>${['articleNumber','skuCode','name','category','color','size','price','responsible','imageUrl'].map(f=>`<td>${(r[f]||'').substring(0,20)}</td>`).join('')}</tr>`).join('')}${parsed.length>30?'<tr><td colspan="9">...仅显示前30条...</td></tr>':''}</tbody>`;
+                    importBtn.disabled = false;
+                    infoDiv.textContent = `共 ${parsed.length} 条有效数据，将自动分为 ${Math.ceil(parsed.length/BATCH)} 批导入`;
+                };
+                csvFile.addEventListener('change', async () => { if (csvFile.files[0]) { csvArea.value = await csvFile.files[0].text(); updatePreview(); } });
+                csvArea.addEventListener('input', updatePreview);
+                headerChk.addEventListener('change', updatePreview);
+                importBtn.addEventListener('click', async () => {
+                    if (!parsed.length) return;
+                    if (!confirm(`即将导入 ${parsed.length} 条SKU，重复编号将跳过，确定？`)) return;
+                    let ok=0, fail=0, skip=0;
+                    bar.style.display='block'; fill.style.width='0%'; importBtn.disabled=true;
+                    for (let i=0; i<Math.ceil(parsed.length/BATCH); i++) {
+                        const chunk = parsed.slice(i*BATCH, (i+1)*BATCH);
+                        statusDiv.textContent = `正在导入第 ${i+1}/${Math.ceil(parsed.length/BATCH)} 批...`;
+                        const codes = chunk.map(d=>d.skuCode.trim());
+                        const { data: existing } = await supabase.from('skus').select('sku_code').in('sku_code', codes);
+                        const existingSet = new Set(existing ? existing.map(e=>e.sku_code) : []);
+                        for (const d of chunk) {
+                            try {
+                                const code = d.skuCode.trim();
+                                if (!code) { fail++; continue; }
+                                if (existingSet.has(code)) { skip++; continue; }
+                                let finalImageUrl = '', phash='0000000000000000', colorHistogram=new Array(12).fill(0), huMoments=[0,0,0,0,0,0,0];
+                                const rawImage = d.imageUrl?.trim();
+                                if (rawImage && (rawImage.startsWith('http') || rawImage.startsWith('data:'))) {
+                                    try {
+                                        const response = await fetch(rawImage);
+                                        if (!response.ok) throw new Error('下载失败');
+                                        const blob = await response.blob();
+                                        const file = new File([blob], `import-${Date.now()}.jpg`, { type: blob.type||'image/jpeg' });
+                                        finalImageUrl = await uploadImage(file);
+                                        const img = await new Promise((resolve,reject) => {
+                                            const img = new Image();
+                                            img.onload = ()=> resolve(img);
+                                            img.onerror = ()=> reject(new Error('解析失败'));
+                                            img.src = URL.createObjectURL(blob);
+                                        });
+                                        phash = computeHashFromImg(img);
+                                        colorHistogram = computeHistFromImg(img);
+                                        huMoments = computeHuMoments(img);
+                                    } catch(imgErr) { finalImageUrl = rawImage; }
+                                } else if (rawImage) finalImageUrl = rawImage;
+                                await supabase.from('skus').insert({
+                                    article_number: d.articleNumber || '',
+                                    sku_code: code,
+                                    name: d.name || '',
+                                    category: d.category || '',
+                                    color: d.color || '',
+                                    size: d.size || '',
+                                    price: d.price || '',
+                                    responsible: d.responsible || '',
+                                    image_url: finalImageUrl,
+                                    phash,
+                                    color_histogram: colorHistogram,
+                                    hu_moments: huMoments,
+                                    created_at: new Date()
+                                });
+                                ok++;
+                            } catch(e) { fail++; }
+                            fill.style.width = `${Math.round((ok+fail+skip)/parsed.length*100)}%`;
+                        }
+                        if (i < Math.ceil(parsed.length/BATCH)-1) await new Promise(r=>setTimeout(r,200));
+                    }
+                    bar.style.display='none'; statusDiv.textContent=''; await refreshData();
+                    toast(`导入完成：成功 ${ok}，跳过重复 ${skip}，失败 ${fail}`, ok?'success':'error');
+                    activate('sku-list');
+                });
+                document.getElementById('btnTmplCSV').addEventListener('click', ()=>{
+                    const csv = 'article_number,sku_code,name,category,color,size,price,responsible,image_url\n,SKU-001,,,,,,,\n';
+                    const blob = new Blob(['\uFEFF'+csv], {type:'text/csv'});
+                    const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='sku_template.csv'; a.click();
+                    toast('模板已下载','success');
+                });
+            }
+
+            // ========== 批量更新图片URL（同步更新Hu矩） ==========
+            function renderBatchUpdateURL() {
+                document.getElementById('contentBody').innerHTML = `
+                <div class="card"><div class="card-header">🔄 批量更新图片URL</div>
+                <div class="card-body">
+                    <p style="font-size:0.85rem;">sku_code 和 new_image_url，自动重新计算所有特征</p>
+                    <div class="form-group"><label>📁 上传CSV</label><input type="file" id="urlCsvFileInput" accept=".csv,.txt"></div>
+                    <div class="form-group"><label>📋 粘贴数据</label><textarea id="urlCsvTextArea" rows="5" placeholder="sku_code,new_image_url\nSKU-001,https://..."></textarea></div>
+                    <label><input type="checkbox" id="urlHasHeader" checked> 首行标题</label>
+                    <div id="urlBatchPreviewContainer" style="display:none;">
+                        <table class="import-preview-table" id="urlPreviewTable"></table>
+                        <div id="urlBatchInfo"></div>
+                        <div class="progress-bar" id="urlProgressBar"><div class="progress-fill" id="urlProgressFill"></div></div>
+                        <div id="urlBatchStatus"></div>
+                    </div>
+                    <button class="btn btn-primary" id="btnUrlBatchUpdate" disabled>🔄 开始更新</button>
+                </div></div>`;
+                let parsed = [];
+                const csvFile = document.getElementById('urlCsvFileInput'), csvArea = document.getElementById('urlCsvTextArea'), headerChk = document.getElementById('urlHasHeader');
+                const previewDiv = document.getElementById('urlBatchPreviewContainer'), previewTable = document.getElementById('urlPreviewTable'), infoDiv = document.getElementById('urlBatchInfo');
+                const bar = document.getElementById('urlProgressBar'), fill = document.getElementById('urlProgressFill'), statusDiv = document.getElementById('urlBatchStatus'), updateBtn = document.getElementById('btnUrlBatchUpdate');
+                const parseCSV = (text,header) => {
+                    const lines = text.split(/\r?\n/).filter(l=>l.trim());
+                    if(!lines.length) return [];
+                    const sep = lines[0].includes('\t')?'\t':',';
+                    const rows = lines.map(l=>l.split(sep).map(c=>c.trim().replace(/^"|"$/g,'')));
+                    let heads=[], start=0;
+                    if(header){ heads=rows[0].map(h=>h.toLowerCase()); start=1; } else heads=['sku_code','new_image_url'];
+                    const mapField = h => { h=h.toLowerCase(); if(/sku|编号/.test(h)) return 'skuCode'; if(/new.*image|new.*url|图片|image|url/.test(h)) return 'imageUrl'; return null; };
+                    const colMap = heads.map(mapField);
+                    return rows.slice(start).map(row=>{ const obj={skuCode:'',imageUrl:''}; colMap.forEach((f,i)=>{if(f&&i<row.length)obj[f]=row[i];}); return obj; }).filter(o=>o.skuCode&&o.imageUrl);
+                };
+                const updatePreview = () => {
+                    const t = csvArea.value.trim();
+                    if(!t){ previewDiv.style.display='none'; updateBtn.disabled=true; return; }
+                    parsed = parseCSV(t,headerChk.checked);
+                    previewDiv.style.display='block';
+                    if(!parsed.length){ previewTable.innerHTML='<tr><td colspan="2">无有效数据</td></tr>'; updateBtn.disabled=true; infoDiv.textContent=''; return; }
+                    previewTable.innerHTML=`<thead><tr><th>SKU编号</th><th>新图片URL</th></tr></thead><tbody>${parsed.slice(0,20).map(r=>`<tr><td>${esc(r.skuCode)}</td><td>${esc(r.imageUrl)}</td></tr>`).join('')}</tbody>`;
+                    updateBtn.disabled=false; infoDiv.textContent=`共 ${parsed.length} 条`;
+                };
+                csvFile.addEventListener('change', async ()=>{ if(csvFile.files[0]){ csvArea.value=await csvFile.files[0].text(); updatePreview(); } });
+                csvArea.addEventListener('input',updatePreview); headerChk.addEventListener('change',updatePreview);
+                updateBtn.addEventListener('click', async ()=>{
+                    if(!parsed.length) return;
+                    if(!confirm(`即将更新 ${parsed.length} 个SKU图片及特征，确定？`)) return;
+                    let ok=0,fail=0; bar.style.display='block'; fill.style.width='0%'; updateBtn.disabled=true;
+                    for(let i=0;i<parsed.length;i++){
+                        const {skuCode,imageUrl}=parsed[i];
+                        statusDiv.textContent=`${i+1}/${parsed.length} : ${skuCode}`;
+                        try {
+                            const response = await fetch(imageUrl);
+                            if(!response.ok) throw new Error('下载失败');
+                            const blob = await response.blob();
+                            const file = new File([blob], `update-${Date.now()}.jpg`, {type: blob.type||'image/jpeg'});
+                            const newUrl = await uploadImage(file);
+                            const img = await new Promise((resolve,reject)=>{
+                                const img = new Image(); img.onload=()=>resolve(img); img.onerror=()=>reject(new Error('解析失败')); img.src=URL.createObjectURL(blob);
+                            });
+                            const phash = computeHashFromImg(img);
+                            const colorHistogram = computeHistFromImg(img);
+                            const huMoments = computeHuMoments(img);
+                            await updateSKUByCode(skuCode, { image_url: newUrl, phash, color_histogram, hu_moments: huMoments });
+                            ok++;
+                        } catch(e){ fail++; }
+                        fill.style.width = `${Math.round((i+1)/parsed.length*100)}%`;
+                    }
+                    bar.style.display='none'; statusDiv.textContent=''; toast(`更新完成：成功 ${ok}，失败 ${fail}`, ok?'success':'error');
+                    await refreshData(); activate('sku-list');
+                });
+            }
+
+            // ========== 其他模块（批量更新货号SKU、模板下载）保持不变 ==========
+            // 此处略去 renderBatchUpdateArticleAndSKU 和 renderTemplateDownload，因它们与特征无关
+
+            // 粘贴事件全局处理（已添加Hu矩传递）
+            document.addEventListener('paste', async (e) => {
+                if (currentNav === 'upload-search') {
+                    const items = e.clipboardData?.items;
+                    if (items) for (const it of items) if (it.type.startsWith('image/')) {
+                        e.preventDefault();
+                        const file = it.getAsFile(); if(!file) continue;
+                        const { img, dataUrl } = await loadFileToImg(file);
+                        searchImageData = compressImg(img, 400);
+                        const pv = document.getElementById('searchPreview'), clr = document.getElementById('clearPreview'), btnS = document.getElementById('btnSearchNow'), dz = document.getElementById('dropZone'), res = document.getElementById('searchResultsContainer');
+                        if(pv && clr && btnS && dz && res) {
+                            pv.src = searchImageData; pv.style.display='block'; clr.style.display='flex';
+                            dz.querySelector('.drop-icon').style.display='none'; const dropText=dz.querySelector('.drop-text'); if(dropText) dropText.style.display='none';
+                            btnS.disabled = false;
+                            res.innerHTML = '<p>🔎 搜索中...</p>';
+                            const searchImg = new Image();
+                            searchImg.onload = () => {
+                                const hu = computeHuMoments(searchImg);
+                                searchWorker.postMessage({ type:'search', payload:{ queryHash: computeHashFromImg(searchImg), queryHistogram: computeHistFromImg(searchImg), queryHu: hu } });
+                            };
+                            searchImg.src = searchImageData;
+                        }
+                        return;
+                    }
+                }
+                if (currentNav === 'url-search') {
+                    const items = e.clipboardData?.items;
+                    if (items) for (const it of items) if (it.type.startsWith('image/')) {
+                        e.preventDefault();
+                        const file = it.getAsFile(); if(!file) continue;
+                        const { img, dataUrl } = await loadFileToImg(file);
+                        const compressed = compressImg(img, 400);
+                        // 切换到上传模式
+                        const uploadPanel = document.getElementById('uploadModePanel'), urlPanel = document.getElementById('urlModePanel');
+                        const uploadTab = document.querySelector('.search-tab[data-tab="upload-mode"]'), urlTab = document.querySelector('.search-tab[data-tab="url-mode"]');
+                        if(uploadPanel && urlPanel && uploadTab && urlTab) {
+                            urlPanel.style.display='none'; uploadPanel.style.display='block';
+                            uploadTab.classList.add('active'); urlTab.classList.remove('active');
+                        }
+                        const preview = document.getElementById('urlUploadPreview'), clearBtn = document.getElementById('urlClearPreview'), searchBtn = document.getElementById('btnUrlUploadSearch'), dropZone = document.getElementById('urlDropZone');
+                        const previewContainer = document.getElementById('urlPreviewContainer'), resultsContainer = document.getElementById('urlResultsContainer');
+                        if(preview && clearBtn && searchBtn && dropZone) {
+                            const spans = dropZone.querySelectorAll('span'); spans.forEach(s=>{ if(!s.classList.contains('preview-img-inline')) s.style.display='none'; });
+                            preview.src = compressed; preview.style.display='block'; clearBtn.style.display='flex'; searchBtn.disabled=false;
+                            if(previewContainer) previewContainer.innerHTML = `<div style="display:inline-block;position:relative;"><img src="${compressed}" style="max-width:260px;max-height:240px;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,0.1);border:3px solid var(--primary);"><br><small>✅ 正在搜索...</small></div>`;
+                            if(resultsContainer) resultsContainer.innerHTML = '<p>🔎 正在比对特征...</p>';
+                            const searchImg = new Image();
+                            searchImg.onload = () => {
+                                const hu = computeHuMoments(searchImg);
+                                searchWorker.postMessage({ type:'search', payload:{ queryHash: computeHashFromImg(searchImg), queryHistogram: computeHistFromImg(searchImg), queryHu: hu } });
+                            };
+                            searchImg.src = compressed;
+                        }
+                        return;
+                    }
+                }
+            });
+
+            // 侧边栏
+            document.getElementById('sidebarNav').addEventListener('click', e => {
+                const nav = e.target.closest('.nav-item'), sub = e.target.closest('.nav-sub-item');
+                if (sub) { activate(sub.dataset.nav); return; }
+                if (nav && nav.dataset.nav) activate(nav.dataset.nav);
+            });
+            document.getElementById('sidebarToggle').addEventListener('click', () => {
+                document.getElementById('sidebar').classList.toggle('collapsed');
+                document.getElementById('sidebarToggle').textContent = document.getElementById('sidebar').classList.contains('collapsed') ? '▶' : '◀ 收起菜单';
+            });
+
+            // 启动
+            (async () => {
+                initWorker();
+                await refreshData();
+                activate('sku-list');
+                console.log('✅ 系统就绪（Hu矩形状增强 + 16x16哈希 + 权重优化）');
+            })();
+        })();
+    </script>
+</body>
+</html>
